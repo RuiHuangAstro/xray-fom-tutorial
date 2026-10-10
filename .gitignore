@@ -1,0 +1,7 @@
+data/
+user_data/
+.quarto/
+*_files/
+*.quarto_ipynb
+__pycache__/
+.ipynb_checkpoints/
