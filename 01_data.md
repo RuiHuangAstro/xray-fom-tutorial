@@ -65,7 +65,7 @@ os.makedirs(DATA, exist_ok=True)
 print('numpy', np.__version__, '· astropy', __import__('astropy').__version__)
 ```
 
-    numpy 2.4.3 · astropy 7.2.0
+    numpy 2.5.4 · astropy 8.0.1
 
 ## 响应文件是什么样的？为什么不用整个下载？
 
@@ -572,7 +572,72 @@ cache.clear()
 print('总用时 %.0f s' % (time.time() - t0))
 ```
 
-    总用时 0 s
+    xifu     new_athena_xifu_mar_v2_4eV_gaussian.rmf    zip-rmf    25.8s
+    xifu     new_athena_xifu_mar_v2_no_filter.arf       zip-file    0.0s
+    xifu     NewAthena_Vignetting_1may26_amcn.txt       file        1.0s
+    axis     axis_ccd_20221101.rmf                      tar-rmf     0.5s
+    axis     axis_onaxis_20230701.arf                   tar-file    0.0s
+    axis     axis_fovavg_20230701.arf                   tar-file    0.0s
+    erosita  onaxis_tm0_rmf_2023-01-17.fits             gz-rmf      2.5s
+    erosita  onaxis_tm0_arf_filter_2023-01-17.fits.gz   file        0.5s
+    erosita  erosita_vignetting_tm1_v4.0.fits           tar-file    6.9s
+    erosita  tm1_arf_filter_000101v02.fits              tar-file    0.0s
+    erosita  erosita_vignetting_tm2_v4.0.fits           tar-file    0.0s
+    erosita  tm2_arf_filter_000101v02.fits              tar-file    0.0s
+    erosita  erosita_vignetting_tm3_v4.0.fits           tar-file    0.0s
+    erosita  tm3_arf_filter_000101v02.fits              tar-file    0.0s
+    erosita  erosita_vignetting_tm4_v4.0.fits           tar-file    0.0s
+    erosita  tm4_arf_filter_000101v02.fits              tar-file    0.0s
+    erosita  erosita_vignetting_tm5_v4.0.fits           tar-file    0.0s
+    erosita  tm5_arf_filter_000101v02.fits              tar-file    0.0s
+    erosita  erosita_vignetting_tm6_v4.0.fits           tar-file    0.0s
+    erosita  tm6_arf_filter_000101v02.fits              tar-file    0.0s
+    erosita  erosita_vignetting_tm7_v4.0.fits           tar-file    0.0s
+    erosita  tm7_arf_filter_000101v02.fits              tar-file    0.0s
+    xmm      mos1-thin-5.arf                            tar-file   27.7s
+    xmm      mos1-thin-5.rmf                            tar-rmf     0.1s
+    xmm      mos2-thin-5.arf                            tar-file    0.0s
+    xmm      mos2-thin-5.rmf                            tar-rmf     0.1s
+    xmm      pn-thin-5.arf                              tar-file    0.0s
+    xmm      pn-thin-5.rmf                              tar-rmf     0.1s
+    xmm      R1o1.rmf                                   rsp        15.8s
+    xmm      R1o2.rmf                                   rsp        11.6s
+    xmm      R2o1.rmf                                   rsp        12.1s
+    xmm      R2o2.rmf                                   rsp        10.7s
+    xmm      XRT1_XAREAEF_0011.CCF                      file        0.3s
+    xmm      XRT2_XAREAEF_0012.CCF                      file        0.2s
+    xmm      XRT3_XAREAEF_0014.CCF                      file        0.3s
+    xrism    rsl_Hp_L_2025.rmf                          rmf         3.3s
+    xrism    rsl_pntsrc_GVC_2025.arf                    file        0.4s
+    xrism    rsl_extflat5_GVC_2025.arf                  file        0.4s
+    chandra  acisi_aimpt_cy28.rmf                       rmf         1.9s
+    chandra  acisi_aimpt_cy28.arf                       file        0.2s
+    chandra  hrmaD1996-12-20vignetN0003.fits            file        0.4s
+    chandra  aciss_heg1_cy28.grmf                       rmf         2.0s
+    chandra  aciss_heg1_cy28.garf                       file        0.3s
+    chandra  aciss_heg-1_cy28.grmf                      rmf         2.2s
+    chandra  aciss_heg-1_cy28.garf                      file        0.4s
+    chandra  aciss_heg2_cy28.grmf                       rmf         2.4s
+    chandra  aciss_heg2_cy28.garf                       file        0.3s
+    chandra  aciss_heg-2_cy28.grmf                      rmf         2.3s
+    chandra  aciss_heg-2_cy28.garf                      file        0.4s
+    chandra  aciss_heg3_cy28.grmf                       rmf         2.0s
+    chandra  aciss_heg3_cy28.garf                       file        0.3s
+    chandra  aciss_heg-3_cy28.grmf                      rmf         2.0s
+    chandra  aciss_heg-3_cy28.garf                      file        0.3s
+    chandra  aciss_meg1_cy28.grmf                       rmf         2.2s
+    chandra  aciss_meg1_cy28.garf                       file        0.3s
+    chandra  aciss_meg-1_cy28.grmf                      rmf         2.2s
+    chandra  aciss_meg-1_cy28.garf                      file        0.3s
+    chandra  aciss_meg2_cy28.grmf                       rmf         2.2s
+    chandra  aciss_meg2_cy28.garf                       file        0.3s
+    chandra  aciss_meg-2_cy28.grmf                      rmf         2.3s
+    chandra  aciss_meg-2_cy28.garf                      file        0.3s
+    chandra  aciss_meg3_cy28.grmf                       rmf         2.3s
+    chandra  aciss_meg3_cy28.garf                       file        0.3s
+    chandra  aciss_meg-3_cy28.grmf                      rmf         2.4s
+    chandra  aciss_meg-3_cy28.garf                      file        0.3s
+    总用时 153 s
 
 ## 自己提供的数据
 
@@ -660,73 +725,73 @@ json.dump(manifest, open(os.path.join(DATA, 'manifest.json'), 'w'), indent=1, en
 ```
 
     仪器       文件                                         方式             原始MB      读取MB     存储MB
-    xifu     new_athena_xifu_mar_v2_4eV_gaussian.rmf    zip-rmf         nan       nan     0.46
-    xifu     new_athena_xifu_mar_v2_no_filter.arf       zip-file        nan       nan     0.48
-    xifu     NewAthena_Vignetting_1may26_amcn.txt       file            nan       nan     0.00
-    axis     axis_ccd_20221101.rmf                      tar-rmf         nan       nan     0.10
-    axis     axis_onaxis_20230701.arf                   tar-file        nan       nan     0.17
-    axis     axis_fovavg_20230701.arf                   tar-file        nan       nan     0.17
-    erosita  onaxis_tm0_rmf_2023-01-17.fits             gz-rmf          nan       nan     0.12
-    erosita  onaxis_tm0_arf_filter_2023-01-17.fits.gz   file            nan       nan     0.01
-    erosita  erosita_vignetting_tm1_v4.0.fits           tar-file        nan       nan     0.05
-    erosita  tm1_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
-    erosita  erosita_vignetting_tm2_v4.0.fits           tar-file        nan       nan     0.05
-    erosita  tm2_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
-    erosita  erosita_vignetting_tm3_v4.0.fits           tar-file        nan       nan     0.05
-    erosita  tm3_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
-    erosita  erosita_vignetting_tm4_v4.0.fits           tar-file        nan       nan     0.05
-    erosita  tm4_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
-    erosita  erosita_vignetting_tm5_v4.0.fits           tar-file        nan       nan     0.05
-    erosita  tm5_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
-    erosita  erosita_vignetting_tm6_v4.0.fits           tar-file        nan       nan     0.05
-    erosita  tm6_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
-    erosita  erosita_vignetting_tm7_v4.0.fits           tar-file        nan       nan     0.05
-    erosita  tm7_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
-    xmm      mos1-thin-5.arf                            tar-file        nan       nan     0.03
-    xmm      mos1-thin-5.rmf                            tar-rmf         nan       nan     0.34
-    xmm      mos2-thin-5.arf                            tar-file        nan       nan     0.03
-    xmm      mos2-thin-5.rmf                            tar-rmf         nan       nan     0.35
-    xmm      pn-thin-5.arf                              tar-file        nan       nan     0.03
-    xmm      pn-thin-5.rmf                              tar-rmf         nan       nan     0.36
-    xmm      R1o1.rmf                                   rsp             nan       nan     0.26
-    xmm      R1o2.rmf                                   rsp             nan       nan     0.25
-    xmm      R2o1.rmf                                   rsp             nan       nan     0.27
-    xmm      R2o2.rmf                                   rsp             nan       nan     0.27
-    xmm      XRT1_XAREAEF_0011.CCF                      file            nan       nan     0.10
-    xmm      XRT2_XAREAEF_0012.CCF                      file            nan       nan     0.10
-    xmm      XRT3_XAREAEF_0014.CCF                      file            nan       nan     0.12
-    xrism    rsl_Hp_L_2025.rmf                          rmf             nan       nan     0.83
-    xrism    rsl_pntsrc_GVC_2025.arf                    file            nan       nan     0.73
-    xrism    rsl_extflat5_GVC_2025.arf                  file            nan       nan     0.73
-    chandra  acisi_aimpt_cy28.rmf                       rmf             nan       nan     0.20
-    chandra  acisi_aimpt_cy28.arf                       file            nan       nan     0.04
-    chandra  hrmaD1996-12-20vignetN0003.fits            file            nan       nan     0.55
-    chandra  aciss_heg1_cy28.grmf                       rmf             nan       nan     0.16
-    chandra  aciss_heg1_cy28.garf                       file            nan       nan     0.26
-    chandra  aciss_heg-1_cy28.grmf                      rmf             nan       nan     0.16
-    chandra  aciss_heg-1_cy28.garf                      file            nan       nan     0.26
-    chandra  aciss_heg2_cy28.grmf                       rmf             nan       nan     0.15
-    chandra  aciss_heg2_cy28.garf                       file            nan       nan     0.26
-    chandra  aciss_heg-2_cy28.grmf                      rmf             nan       nan     0.15
-    chandra  aciss_heg-2_cy28.garf                      file            nan       nan     0.26
-    chandra  aciss_heg3_cy28.grmf                       rmf             nan       nan     0.15
-    chandra  aciss_heg3_cy28.garf                       file            nan       nan     0.26
-    chandra  aciss_heg-3_cy28.grmf                      rmf             nan       nan     0.15
-    chandra  aciss_heg-3_cy28.garf                      file            nan       nan     0.26
-    chandra  aciss_meg1_cy28.grmf                       rmf             nan       nan     0.17
-    chandra  aciss_meg1_cy28.garf                       file            nan       nan     0.26
-    chandra  aciss_meg-1_cy28.grmf                      rmf             nan       nan     0.17
-    chandra  aciss_meg-1_cy28.garf                      file            nan       nan     0.26
-    chandra  aciss_meg2_cy28.grmf                       rmf             nan       nan     0.17
-    chandra  aciss_meg2_cy28.garf                       file            nan       nan     0.26
-    chandra  aciss_meg-2_cy28.grmf                      rmf             nan       nan     0.17
-    chandra  aciss_meg-2_cy28.garf                      file            nan       nan     0.26
-    chandra  aciss_meg3_cy28.grmf                       rmf             nan       nan     0.17
-    chandra  aciss_meg3_cy28.garf                       file            nan       nan     0.26
-    chandra  aciss_meg-3_cy28.grmf                      rmf             nan       nan     0.17
-    chandra  aciss_meg-3_cy28.garf                      file            nan       nan     0.26
+    xifu     new_athena_xifu_mar_v2_4eV_gaussian.rmf    zip-rmf        9.21       nan     0.46
+    xifu     new_athena_xifu_mar_v2_no_filter.arf       zip-file       0.48       nan     0.48
+    xifu     NewAthena_Vignetting_1may26_amcn.txt       file           0.00      0.00     0.00
+    axis     axis_ccd_20221101.rmf                      tar-rmf        1.37       nan     0.10
+    axis     axis_onaxis_20230701.arf                   tar-file       0.17       nan     0.17
+    axis     axis_fovavg_20230701.arf                   tar-file       0.17       nan     0.17
+    erosita  onaxis_tm0_rmf_2023-01-17.fits             gz-rmf         4.68      2.09     0.12
+    erosita  onaxis_tm0_arf_filter_2023-01-17.fits.gz   file           0.01      0.01     0.01
+    erosita  erosita_vignetting_tm1_v4.0.fits           tar-file       0.05       nan     0.05
+    erosita  tm1_arf_filter_000101v02.fits              tar-file       0.03       nan     0.03
+    erosita  erosita_vignetting_tm2_v4.0.fits           tar-file       0.05       nan     0.05
+    erosita  tm2_arf_filter_000101v02.fits              tar-file       0.03       nan     0.03
+    erosita  erosita_vignetting_tm3_v4.0.fits           tar-file       0.05       nan     0.05
+    erosita  tm3_arf_filter_000101v02.fits              tar-file       0.03       nan     0.03
+    erosita  erosita_vignetting_tm4_v4.0.fits           tar-file       0.05       nan     0.05
+    erosita  tm4_arf_filter_000101v02.fits              tar-file       0.03       nan     0.03
+    erosita  erosita_vignetting_tm5_v4.0.fits           tar-file       0.05       nan     0.05
+    erosita  tm5_arf_filter_000101v02.fits              tar-file       0.03       nan     0.03
+    erosita  erosita_vignetting_tm6_v4.0.fits           tar-file       0.05       nan     0.05
+    erosita  tm6_arf_filter_000101v02.fits              tar-file       0.03       nan     0.03
+    erosita  erosita_vignetting_tm7_v4.0.fits           tar-file       0.05       nan     0.05
+    erosita  tm7_arf_filter_000101v02.fits              tar-file       0.03       nan     0.03
+    xmm      mos1-thin-5.arf                            tar-file       0.03       nan     0.03
+    xmm      mos1-thin-5.rmf                            tar-rmf       14.79       nan     0.34
+    xmm      mos2-thin-5.arf                            tar-file       0.03       nan     0.03
+    xmm      mos2-thin-5.rmf                            tar-rmf       14.76       nan     0.35
+    xmm      pn-thin-5.arf                              tar-file       0.03       nan     0.03
+    xmm      pn-thin-5.rmf                              tar-rmf        3.84       nan     0.36
+    xmm      R1o1.rmf                                   rsp           34.30     15.39     0.26
+    xmm      R1o2.rmf                                   rsp           13.73      8.78     0.25
+    xmm      R2o1.rmf                                   rsp           28.88     13.55     0.27
+    xmm      R2o2.rmf                                   rsp           11.72      7.66     0.27
+    xmm      XRT1_XAREAEF_0011.CCF                      file           0.10      0.10     0.10
+    xmm      XRT2_XAREAEF_0012.CCF                      file           0.10      0.10     0.10
+    xmm      XRT3_XAREAEF_0014.CCF                      file           0.12      0.12     0.12
+    xrism    rsl_Hp_L_2025.rmf                          rmf          389.87      3.62     0.83
+    xrism    rsl_pntsrc_GVC_2025.arf                    file           0.73      0.73     0.73
+    xrism    rsl_extflat5_GVC_2025.arf                  file           0.73      0.73     0.73
+    chandra  acisi_aimpt_cy28.rmf                       rmf            2.23      0.62     0.20
+    chandra  acisi_aimpt_cy28.arf                       file           0.04      0.04     0.04
+    chandra  hrmaD1996-12-20vignetN0003.fits            file           0.55      0.55     0.55
+    chandra  aciss_heg1_cy28.grmf                       rmf            7.15      1.01     0.16
+    chandra  aciss_heg1_cy28.garf                       file           0.26      0.26     0.26
+    chandra  aciss_heg-1_cy28.grmf                      rmf            7.15      1.01     0.16
+    chandra  aciss_heg-1_cy28.garf                      file           0.26      0.26     0.26
+    chandra  aciss_heg2_cy28.grmf                       rmf            7.15      0.99     0.15
+    chandra  aciss_heg2_cy28.garf                       file           0.26      0.26     0.26
+    chandra  aciss_heg-2_cy28.grmf                      rmf            7.15      0.99     0.15
+    chandra  aciss_heg-2_cy28.garf                      file           0.26      0.26     0.26
+    chandra  aciss_heg3_cy28.grmf                       rmf            7.15      0.97     0.15
+    chandra  aciss_heg3_cy28.garf                       file           0.26      0.26     0.26
+    chandra  aciss_heg-3_cy28.grmf                      rmf            7.15      0.97     0.15
+    chandra  aciss_heg-3_cy28.garf                      file           0.26      0.26     0.26
+    chandra  aciss_meg1_cy28.grmf                       rmf           20.18      1.76     0.17
+    chandra  aciss_meg1_cy28.garf                       file           0.26      0.26     0.26
+    chandra  aciss_meg-1_cy28.grmf                      rmf           19.36      1.73     0.17
+    chandra  aciss_meg-1_cy28.garf                      file           0.26      0.26     0.26
+    chandra  aciss_meg2_cy28.grmf                       rmf           20.18      1.79     0.17
+    chandra  aciss_meg2_cy28.garf                       file           0.26      0.26     0.26
+    chandra  aciss_meg-2_cy28.grmf                      rmf           19.36      1.76     0.17
+    chandra  aciss_meg-2_cy28.garf                      file           0.26      0.26     0.26
+    chandra  aciss_meg3_cy28.grmf                       rmf           20.18      1.72     0.17
+    chandra  aciss_meg3_cy28.garf                       file           0.26      0.26     0.26
+    chandra  aciss_meg-3_cy28.grmf                      rmf           19.36      1.70     0.17
+    chandra  aciss_meg-3_cy28.garf                      file           0.26      0.26     0.26
 
-    原始文件合计约 0 MB（不算 2.9 GB 的 X-IFU 发布包和 144 MB 的 SIXTE 包）；data/ 目录现在 12.7 MB。
+    原始文件合计约 698 MB（不算 2.9 GB 的 X-IFU 发布包和 144 MB 的 SIXTE 包）；data/ 目录现在 12.7 MB。
 
 `data/manifest.json` 记下了每个文件的 SHA-256
 校验和，方便以后核对数据有没有变。 下一步：打开 **教程

@@ -704,7 +704,7 @@ print('计算用时 %.1f s' % (time.time() - T0))
 ```
 
     跳过：缺少 data/arcus/far_chan_all_-2.rmf
-    计算用时 11.3 s
+    计算用时 6.7 s
 
 ## 画出 Fig. 3
 
@@ -842,7 +842,7 @@ print('全部用时 %.1f s' % (time.time() - T0))
     Chandra/HETG                 0.491    2.06e+03    5.91e+04
     Chandra/ACIS-I              0.0588         155    3.58e+03
     XRISM/Resolve                    0    8.41e-09    2.59e+03
-    全部用时 16.0 s
+    全部用时 9.9 s
 
 几点观察：
 
