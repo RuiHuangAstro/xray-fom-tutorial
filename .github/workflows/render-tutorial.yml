@@ -82,7 +82,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add 01_data.md 02_fom.md 01_data_files/ 02_fom_files/ 01_data.ipynb 02_fom.ipynb
+          # add only what exists (01_data_files/ may be absent: 01_data has no figures)
+          for p in 01_data.md 02_fom.md 01_data_files 02_fom_files 01_data.ipynb 02_fom.ipynb; do
+            [ -e "$p" ] && git add "$p"
+          done
           if ! git diff --cached --quiet; then
             git commit -m "chore: render gfm + ipynb (clean env, public data only) [skip ci]"
             git push
