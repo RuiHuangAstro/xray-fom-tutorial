@@ -1,0 +1,733 @@
+# 教程 1　准备数据：下载 X 射线望远镜的响应文件
+
+
+## 这份教程做什么
+
+我们要比较各个 X
+射线望远镜**探测一条微弱谱线的能力**。算这个只需要每台仪器的两样东西：
+
+- **有效面积** $A(E)$：望远镜在能量 $E$ 处”接收光子的等效面积”（单位
+  cm²），存放在 **ARF** 文件里；
+- **能量分辨本领**
+  $R(E)=E/\Delta E$：仪器把一条无限窄的谱线展宽成多宽，存放在 **RMF**
+  文件里。
+
+此外，对视场边缘的光子打了多少折扣（渐晕）也要用到几张小表。
+
+这份教程 1
+只做一件事：**把这些文件从各个任务的官方服务器上取下来**，放进 `data/`
+目录。 计算和画图放在教程 2（`02_fom.qmd`）。
+
+> [!NOTE]
+>
+> ### 运行一次要多少时间和空间？
+>
+> - **运行前**：只需要这两个 `.qmd` 文件（几十 KB）。
+> - **运行后**：`data/` 约 33 MB。其中约 20 MB 是自备的
+>   Arcus、HUBS、DIXE 文件，只用公开数据时约 13 MB。
+> - **运行中**：不在硬盘上存任何大文件，内存峰值约 200 MB。
+> - **用时**：网络正常时约 2 分钟。
+>
+> 原始文件加起来约 3.8 GB，其中 XRISM 的一个 RMF 就有 390 MB，NewAthena
+> 的发布包有 2.9 GB。我们用下面
+> 「响应文件是什么样的」
+> 的办法，只取真正用得到的那一小部分。
+
+### 怎么运行
+
+1.  安装 Python ≥ 3.9
+    和三个包：`pip install numpy astropy matplotlib jupyter`。
+2.  安装 [Quarto](https://quarto.org)。
+3.  在这个文件所在的目录里执行：
+
+``` bash
+quarto render 01_data.qmd      # 执行全部代码，并生成 01_data.html
+```
+
+也可以在 VS Code、Positron 或 RStudio 里打开 `.qmd`，一格一格地运行。
+重复运行时，已经下载好的文件会被跳过。
+
+## 准备工作：软件包和目录
+
+``` python
+import gzip, hashlib, io, json, os, re, shutil, tarfile, time, urllib.request, zipfile
+from concurrent.futures import ThreadPoolExecutor
+
+import numpy as np
+from astropy.io import fits
+
+DATA = 'data'            # 教程 2 从这里读数据
+USER = 'user_data'       # 没有公开下载渠道的文件，需要你自己放进来（见第 6 节）
+N_ROWS = 400             # 每个 RMF 保留多少行（多少个能量点），见第 3 节
+FORCE = False            # True：即使文件已存在也重新下载
+
+os.makedirs(DATA, exist_ok=True)
+print('numpy', np.__version__, '· astropy', __import__('astropy').__version__)
+```
+
+    numpy 2.4.3 · astropy 7.2.0
+
+## 响应文件是什么样的？为什么不用整个下载？
+
+### FITS 表格
+
+天文数据几乎都存成 **FITS** 格式。一个 FITS
+文件由若干个”块”（HDU）组成，每块是一个头（文字写成的
+`关键字 = 值`）加一个数据区（图像或表格）。
+
+- **ARF** 里有一张表
+  `SPECRESP`，每行一个能量区间：`ENERG_LO, ENERG_HI, SPECRESP`。第三列就是有效面积
+  $A(E)$。这种文件只有几十到几百 KB。
+- **RMF** 里有一张表 `MATRIX`。**第 $i$ 行**描述真实能量为 $E_i$
+  的光子会被探测器记录到哪些”道”（channel）、概率各是多少。另一张表
+  `EBOUNDS` 给出每个道对应的能量范围。
+
+把 RMF 的所有行摞起来，就是一个 $N_E\times N_\text{chan}$
+的矩阵。XRISM/Resolve 的这个矩阵是 60000 × 60000，所以文件有 390 MB。
+
+### 我们只需要其中一小部分
+
+计算分辨本领时，我们只关心每一行”那个峰有多宽”（教程 2
+会详细讲）。分辨本领随能量变化得很平滑，**几百个能量点就足够描出
+$R(E)$**，用不着 60000 行全部。
+
+每一行里，我们也只留**峰附近**的那一段：密度低于峰值千分之一的道都扔掉，量半高宽用不到它们。
+被扔掉部分的总和不会丢：整行的和另存在 `ROWSUM` 列里，教程 2
+用它判断哪些行可信。
+
+### 只下载需要的字节：HTTP Range 请求
+
+大多数天文数据服务器都支持一种请求：“请只给我这个文件的第 a 到第 b
+个字节”，叫 *HTTP Range request*。FITS 的格式又很规整：
+
+1.  头信息按 2880 字节一块存放，读几块就能知道表格从哪里开始、每行多长；
+2.  第 $i$ 行的位置可以直接算出来：`表格起点 + i × 行长`；
+3.  每行长度可变的数据（稀疏矩阵的非零元素）放在表格后面的”堆”（heap）里。行里记着它在堆中的偏移量，于是也能直接去取。
+
+于是对每个 RMF，我们只取文件头、约 400
+行，以及这些行在堆里的数据，再写成一个**很小但格式完全标准**的 RMF。
+例如 XRISM 那个 390 MB 的文件，实际只读了不到 4 MB，存下来不到 1 MB。
+
+有些文件只能整包下载：AXIS、SIXTE 和 XMM 提案响应的 `.tar.gz`
+包是压缩流，不能跳着读。这种情况下我们**边下载边解包**，只把要的成员留在内存里，硬盘上什么也不存。
+NewAthena 的 2.9 GB 是一个 `.zip`。zip
+的”目录”放在文件末尾，每个成员可以单独解压，所以同样能用 Range
+只取那两个响应文件。
+
+## 工具箱
+
+下面这一节是”下载机器”。第一次读可以只看每个函数的说明，**跳过实现细节**；后面的数据清单才是重点。
+
+<details open class="code-fold">
+<summary>代码</summary>
+
+``` python
+BLOCK = 2880                                   # FITS 的块大小（字节）
+UA = {'User-Agent': 'fom-tutorial/1.0 (education)'}
+
+
+class Source:
+    """按字节随机读取：本地文件、内存中的 bytes，或者支持 Range 的 http(s) 地址。"""
+
+    def __init__(self, src):
+        self.src, self.nbytes = src, 0
+        if isinstance(src, (bytes, bytearray)):
+            self.kind, self.size = 'mem', len(src)
+        elif str(src).startswith(('http://', 'https://')):
+            self.kind = 'url'
+            # 先要 1 个字节：顺便得到文件总长度，并确认服务器支持 Range
+            req = urllib.request.Request(src, headers=dict(UA, Range='bytes=0-0'))
+            with urllib.request.urlopen(req, timeout=60) as r:
+                if r.status != 206:
+                    raise IOError('服务器不支持 Range：' + src)
+                self.size = int(r.headers['Content-Range'].split('/')[-1])
+                self.src = r.geturl()                 # 跟随重定向后的真实地址
+        else:
+            self.kind, self.size = 'file', os.path.getsize(src)
+
+    def read(self, start, n):
+        if n <= 0:
+            return b''
+        self.nbytes += n
+        if self.kind == 'mem':
+            return bytes(self.src[start:start + n])
+        if self.kind == 'file':
+            with open(self.src, 'rb') as f:
+                f.seek(start)
+                return f.read(n)
+        h = dict(UA, Range='bytes=%d-%d' % (start, start + n - 1))
+        for attempt in range(5):                       # 网络偶尔会断，重试几次
+            try:
+                with urllib.request.urlopen(urllib.request.Request(self.src, headers=h), timeout=120) as r:
+                    b = r.read()
+                if r.status == 206 and len(b) == n:
+                    return b
+            except OSError:
+                pass
+            time.sleep(1 + attempt)
+        raise IOError('读取失败：%s [%d, +%d]' % (self.src, start, n))
+
+    def read_multi(self, segs):
+        """一个 HTTP 请求取多段字节（服务器返回 multipart/byteranges）。"""
+        if len(segs) == 1 or self.kind != 'url':
+            return [self.read(s, e - s) for s, e in segs]
+        rng = 'bytes=' + ','.join('%d-%d' % (s, e - 1) for s, e in segs)
+        for attempt in range(5):
+            try:
+                req = urllib.request.Request(self.src, headers=dict(UA, Range=rng))
+                with urllib.request.urlopen(req, timeout=120) as r:
+                    ctype, body = r.headers.get('Content-Type', ''), r.read()
+                if r.status == 206 and 'multipart/byteranges' in ctype:
+                    parts = {}
+                    for m in re.finditer(rb'Content-Range: bytes (\d+)-(\d+)/\d+\r\n\r\n', body, re.I):
+                        a, b = int(m.group(1)), int(m.group(2))
+                        parts[a] = body[m.end():m.end() + b - a + 1]
+                    if all(s in parts for s, _ in segs):
+                        self.nbytes += sum(e - s for s, e in segs)
+                        return [parts[s][:e - s] for s, e in segs]
+                break                                   # 服务器不支持多段：退回逐段读取
+            except OSError:
+                time.sleep(1 + attempt)
+        return [self.read(s, e - s) for s, e in segs]
+
+    def read_many(self, ranges, workers=8, gap=2048, batch=60):
+        """一次取很多段 (start, n)：几乎相邻的段合并；每个 HTTP 请求带最多 batch 段；并行下载。"""
+        order = sorted(range(len(ranges)), key=lambda i: ranges[i][0])
+        groups = []
+        for i in order:
+            s, n = ranges[i]
+            if groups and s <= groups[-1][1] + gap:
+                groups[-1][1] = max(groups[-1][1], s + n)
+                groups[-1][2].append(i)
+            else:
+                groups.append([s, s + n, [i]])
+        batches = [groups[i:i + batch] for i in range(0, len(groups), batch)]
+        with ThreadPoolExecutor(workers if self.kind == 'url' else 1) as ex:
+            res = list(ex.map(lambda bt: self.read_multi([(g[0], g[1]) for g in bt]), batches))
+        blobs = [b for r in res for b in r]
+        out = [None] * len(ranges)
+        for (g0, _, idx), b in zip(groups, blobs):
+            for i in idx:
+                s, n = ranges[i]
+                out[i] = b[s - g0:s - g0 + n]
+        return out
+
+
+def hdus(src):
+    """只读文件头，列出每个 HDU：(header, 数据起点, 数据长度)。"""
+    out, pos = [], 0
+    while pos < src.size:
+        raw = b''
+        while True:
+            raw += src.read(pos + len(raw), min(4 * BLOCK, src.size - pos - len(raw)))
+            ends = [m.start() for m in re.finditer(rb'END {77}', raw) if m.start() % 80 == 0]
+            if ends or pos + len(raw) >= src.size:
+                break
+        if not ends:
+            break
+        hlen = (ends[0] // BLOCK + 1) * BLOCK
+        hdr = fits.Header.fromstring(raw[:hlen].decode('ascii'))
+        size = abs(hdr.get('BITPIX', 8)) // 8 if hdr.get('NAXIS', 0) else 0
+        for k in range(1, hdr.get('NAXIS', 0) + 1):
+            size *= hdr['NAXIS%d' % k]
+        size = (size + hdr.get('PCOUNT', 0)) * hdr.get('GCOUNT', 1)
+        out.append((hdr, pos + hlen, size))
+        pos += hlen + -(-size // BLOCK) * BLOCK
+    return out
+
+
+def find(hs, *names):
+    return [h for h in hs if h[0].get('EXTNAME', '').strip() in names][0]
+
+
+# FITS 表格的列：TFORM 写着类型和个数；P/Q 表示"变长数组"，数据放在堆里
+_SIZE = dict(L=1, B=1, I=2, J=4, K=8, A=1, E=4, D=8)
+_DT = dict(L='i1', B='u1', I='>i2', J='>i4', K='>i8', E='>f4', D='>f8')
+
+
+def columns(hdr):
+    cols, off = {}, 0
+    for i in range(1, hdr['TFIELDS'] + 1):
+        rep, code, el = re.match(r'\s*(\d*)([LBIJKAEDPQ])([A-Z]?)', hdr['TFORM%d' % i]).groups()
+        name = hdr['TTYPE%d' % i].strip().upper()
+        if code in 'PQ':
+            cols[name] = (off, code, 1, el)
+            off += 8 if code == 'P' else 16
+        else:
+            cols[name] = (off, 'fix', int(rep or 1), code)
+            off += int(rep or 1) * _SIZE[code]
+    return cols
+
+
+def field(row, col):
+    off, kind, rep, el = col
+    if kind == 'fix':
+        return np.frombuffer(row, _DT[el], rep, off)
+    n, p = np.frombuffer(row, '>i4' if kind == 'P' else '>i8', 2, off)
+    return int(n), int(p)                              # 变长数组：(元素个数, 在堆中的偏移)
+
+
+def read_rows(src, hdr, start, rows):
+    """取出 MATRIX 表的若干行。"""
+    width, cols = hdr['NAXIS1'], columns(hdr)
+    heap = start + hdr.get('THEAP', width * hdr['NAXIS2'])
+    fixed = src.read_many([(start + r * width, width) for r in rows])
+    keys = ('ENERG_LO', 'ENERG_HI', 'N_GRP', 'F_CHAN', 'N_CHAN', 'MATRIX')
+    d = {k: [field(b, cols[k]) for b in fixed] for k in keys}
+    var = [k for k in ('F_CHAN', 'N_CHAN', 'MATRIX') if cols[k][1] in 'PQ']
+    need = [(heap + d[k][i][1], d[k][i][0] * _SIZE[cols[k][3]]) for i in range(len(rows)) for k in var]
+    blobs = iter(src.read_many(need))
+    for i in range(len(rows)):
+        for k in var:
+            d[k][i] = np.frombuffer(next(blobs), _DT[cols[k][3]])
+    for k in ('ENERG_LO', 'ENERG_HI', 'N_GRP'):
+        d[k] = np.array([x[0] for x in d[k]])
+    return d
+
+
+EGRID = np.geomspace(0.09, 10.2, 1500)       # 教程 2 画图用的能量网格（keV）
+
+
+def row_energies(src, hdr, start):
+    """(行号, 能量)。表格的定长部分不大时整个读进来（精确）；否则只抽查 129 行。"""
+    nrow, width, cols = hdr['NAXIS2'], hdr['NAXIS1'], columns(hdr)
+    if nrow * width < 4e6:
+        probe, blob = np.arange(nrow), src.read(start, nrow * width)
+        rows = [blob[i * width:(i + 1) * width] for i in probe]
+    else:
+        probe = np.unique(np.linspace(0, nrow - 1, min(129, nrow)).astype(int))
+        rows = src.read_many([(start + r * width, width) for r in probe])
+    e = np.array([(field(b, cols['ENERG_LO'])[0] + field(b, cols['ENERG_HI'])[0]) / 2 for b in rows])
+    return (probe, e) if e[0] < e[-1] else (probe[::-1], e[::-1])
+
+
+def pick_rows(src, hdr, start, n_rows, emin=0.088, emax=10.4):     # 略宽于画图范围 0.09–10.2 keV
+    """挑出能量最接近 n_rows 个对数均匀能量点的行。"""
+    probe, e = row_energies(src, hdr, start)
+    lo, hi = max(e[e > 0].min(), emin), min(e.max(), emax)
+    target = np.geomspace(lo, hi, n_rows)
+    return np.unique(np.round(np.interp(target, e, probe)).astype(int))
+
+
+def bracket_rows(src, hdr, start):
+    """RSP 文件：画图网格上每个能量点两侧的那两行（教程 2 在它们之间线性插值）。"""
+    probe, e = row_energies(src, hdr, start)
+    k = np.searchsorted(e, EGRID)
+    ok = (k > 0) & (k < len(e))
+    return np.unique(np.concatenate([probe[k[ok] - 1], probe[k[ok]]]))
+
+
+def _hdu_from_raw(hdr, raw):
+    prim = fits.PrimaryHDU().header.tostring().encode()
+    return fits.HDUList.fromstring(prim + hdr.tostring().encode() + raw + b'\0' * (-len(raw) % BLOCK))[1].copy()
+
+
+CORE = 1e-3     # 每行只保留峰附近、密度高于峰值 1/1000 的道（足够量出半高宽）
+
+
+def _core(fch, nch, mat, tlmin, width):
+    """把一行展开成 (道号, 响应)，只留峰两侧连续的、密度 ≥ CORE × 峰值 的一段。"""
+    ch = np.concatenate([np.arange(f, f + n) for f, n in zip(fch, nch)]) if len(fch) else np.zeros(0, int)
+    v = np.asarray(mat[:len(ch)], 'f8')
+    if len(v) < 2 or v.max() <= 0:
+        return ch[:0], v[:0]
+    dens = v / width[np.clip(ch - tlmin, 0, len(width) - 1)]
+    k = int(np.argmax(dens))
+    i = j = k
+    while i > 0 and ch[i - 1] == ch[i] - 1 and dens[i - 1] >= CORE * dens[k]:
+        i -= 1
+    while j < len(v) - 1 and ch[j + 1] == ch[j] + 1 and dens[j + 1] >= CORE * dens[k]:
+        j += 1
+    return ch[i:j + 1], v[i:j + 1]
+
+
+def slim_rmf(src, out, n_rows=N_ROWS, origin='', arf_out=None):
+    """写一个只含约 n_rows 行（每行只留峰附近）和完整 EBOUNDS 的标准 RMF。
+    arf_out：对 RSP 文件（面积乘在矩阵里），再把画图网格两侧各行的整行之和写成一个 ARF。"""
+    hs = hdus(src)
+    mh, mstart, _ = find(hs, 'MATRIX', 'SPECRESP MATRIX')
+    eh, estart, esize = find(hs, 'EBOUNDS')
+    eb = _hdu_from_raw(eh, src.read(estart, esize))
+    width = np.abs(np.asarray(eb.data['E_MAX'], float) - eb.data['E_MIN'])
+    width[width == 0] = np.inf
+    i = list(columns(mh)).index('F_CHAN') + 1
+    tlmin = int(mh.get('TLMIN%d' % i, eb.data['CHANNEL'][0]))
+    rows_r = pick_rows(src, mh, mstart, n_rows)
+    rows = rows_r
+    if arf_out:
+        rows_a = bracket_rows(src, mh, mstart)
+        rows = np.union1d(rows_r, rows_a)
+    d = read_rows(src, mh, mstart, list(rows))
+    ng = d['N_GRP'].astype(int)
+    full = [np.asarray(m[:int(np.sum(c[:n]))], 'f8') for m, c, n in zip(d['MATRIX'], d['N_CHAN'], ng)]
+    rowsum = np.array([f.sum() for f in full])
+    if arf_out:
+        sel = np.isin(rows, rows_a)
+        hdu = fits.BinTableHDU.from_columns([
+            fits.Column('ENERG_LO', 'E', unit='keV', array=d['ENERG_LO'][sel]),
+            fits.Column('ENERG_HI', 'E', unit='keV', array=d['ENERG_HI'][sel]),
+            fits.Column('SPECRESP', 'E', unit='cm**2', array=rowsum[sel])], name='SPECRESP')
+        hdu.header['ORIGIN'] = (os.path.basename(str(origin))[:60], 'row sums of this RSP')
+        fits.HDUList([fits.PrimaryHDU(), hdu]).writeto(arf_out, overwrite=True)
+        keep = np.isin(rows, rows_r)
+    else:
+        keep = np.ones(len(rows), bool)
+    fch, nch, mat = [], [], []
+    for r in np.flatnonzero(keep):
+        ch, v = _core(d['F_CHAN'][r][:ng[r]], d['N_CHAN'][r][:ng[r]], full[r], tlmin, width)
+        fch.append(np.array(ch[:1], 'i4')); nch.append(np.array([len(ch)], 'i4')); mat.append(v.astype('f4'))
+    obj = lambda a: np.array(a + [None], dtype=object)[:-1]
+    m = fits.BinTableHDU.from_columns([
+        fits.Column('ENERG_LO', 'E', unit='keV', array=d['ENERG_LO'][keep]),
+        fits.Column('ENERG_HI', 'E', unit='keV', array=d['ENERG_HI'][keep]),
+        fits.Column('N_GRP', 'J', array=np.array([len(f) for f in fch])),           # 空行记为 0 组
+        fits.Column('F_CHAN', 'PJ()', array=obj(fch)),
+        fits.Column('N_CHAN', 'PJ()', array=obj(nch)),
+        fits.Column('MATRIX', 'PE()', array=obj(mat)),
+        fits.Column('ROWSUM', 'E', array=rowsum[keep])], name='MATRIX')
+    for k in ('TELESCOP', 'INSTRUME', 'FILTER', 'DETNAM', 'CHANTYPE', 'DETCHANS', 'HDUCLASS', 'HDUCLAS1',
+              'HDUCLAS2', 'HDUCLAS3', 'HDUVERS'):
+        if k in mh:
+            m.header[k] = mh[k]
+    m.header['TLMIN4'] = tlmin                                  # 道号从 0 还是从 1 开始
+    m.header['NROWORIG'] = (mh['NAXIS2'], 'rows in the original matrix')
+    m.header['CORE'] = (CORE, 'channels below CORE x peak density dropped')
+    m.header['ORIGIN'] = (os.path.basename(str(origin))[:60], 'original file')
+    m.header['COMMENT'] = 'ROWSUM = sum of the full original row (before trimming)'
+    fits.HDUList([fits.PrimaryHDU(), m, eb]).writeto(out, overwrite=True)
+    return int(keep.sum()), mh['NAXIS2']
+
+
+def get(url):
+    """整个下载一个（小）文件，返回 bytes。"""
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=300) as r:
+                return r.read()
+        except OSError as e:
+            err = e
+            time.sleep(1 + attempt)
+    raise err
+
+
+class RangeFile(io.RawIOBase):
+    """把 Source 包装成可以 seek 的文件，这样 Python 的 zipfile 就能远程只读一个成员。"""
+    def __init__(self, src): self.src, self.pos = src, 0
+    def readable(self): return True
+    def seekable(self): return True
+    def tell(self): return self.pos
+    def seek(self, off, whence=0):
+        self.pos = (off, self.pos + off, self.src.size + off)[whence]
+        return self.pos
+    def readinto(self, buf):
+        n = max(0, min(len(buf), self.src.size - self.pos))
+        b = self.src.read(self.pos, n)
+        buf[:len(b)] = b
+        self.pos += len(b)
+        return len(b)
+
+
+def zip_members(url, names):
+    """{成员名: bytes}，只读 zip 末尾的目录和要的成员。"""
+    src = Source(url)
+    with zipfile.ZipFile(io.BufferedReader(RangeFile(src), 1 << 20)) as z:
+        out = {n: z.read([m for m in z.namelist() if m.endswith(n)][0]) for n in names}
+    return out, src.nbytes
+
+
+def tar_members(url, names):
+    """边下载边解包一个 .tar.gz，只把要的成员留在内存里，找齐就停。"""
+    want, out, nbytes = set(names), {}, 0
+    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=300) as r:
+        with tarfile.open(fileobj=r, mode='r|gz') as t:
+            for m in t:
+                b = m.name.rsplit('/', 1)[-1]
+                if m.isfile() and b in want:
+                    out[b] = t.extractfile(m).read()
+                    if len(out) == len(want):
+                        break
+    return out
+```
+
+</details>
+
+## 数据清单
+
+每一行是一个要放进 `data/` 的文件。`how` 说明怎么取：
+
+| how | 含义 |
+|----|----|
+| `file` | 整个下载（小文件，ARF、渐晕表等） |
+| `rmf` | 用 Range 只取约 400 行，写成精简 RMF |
+| `rsp` | RGS 的 RSP 把有效面积也乘进了矩阵：再额外取画图网格两侧的行，把每行求和写成一个 ARF（`*_area.arf`） |
+| `gz-rmf` | 先整个下载 `.gz`（只有 2 MB），在内存里解压后精简 |
+| `zip:` / `tar:` | 从远程压缩包里取单个成员，见上一节 |
+
+``` python
+HEA = 'https://heasarc.gsfc.nasa.gov/'
+XRISM = HEA + 'docs/xrism/proposals/responses/'
+XMM = 'https://xmm-tools.cosmos.esa.int/external/xmm_ccf/ccf/extras/responses/'
+CCF = HEA + 'FTP/xmm/data/CCF/'
+CXC = 'https://cxc.cfa.harvard.edu/caldb/prop_plan/'
+ERO = 'https://erosita.mpe.mpg.de/dr1/eSASS4DR1/eSASS4DR1_arfrmf/'
+SIXTE = 'https://www.sternwarte.uni-erlangen.de/~sixte/downloads/sixte/instruments/instruments_srg-1.9.2.tar.gz'
+AO26 = HEA + 'FTP/xmm/data/responses/xmm_ao26_calfiles.tar.gz'   # XMM 第 26 轮观测申请用的官方响应
+AXIS = 'https://axis.umd.edu/sites/default/files/2025-02/axis_specresp_20250211.tar.gz'
+XIFU = 'https://sdrive.cnrs.fr/s/mBLrAMCkFYGcB7o/download'      # X-IFU 团队发布的 2.9 GB zip
+ESA_VIG = ('https://www.cosmos.esa.int/documents/400752/22601703/Vignetting_1may26_amcn.txt/'
+           '5ad7f5d0-52d6-4432-af0c-7373f2787eef?t=1777907772682')
+
+CATALOG = [
+    # NewAthena / X-IFU：2026-05 任务采纳评审（MAR）版本，4 eV 基线，滤光轮开放位
+    ('xifu', 'new_athena_xifu_mar_v2_4eV_gaussian.rmf', 'zip-rmf', XIFU),
+    ('xifu', 'new_athena_xifu_mar_v2_no_filter.arf', 'zip-file', XIFU),
+    ('xifu', 'NewAthena_Vignetting_1may26_amcn.txt', 'file', ESA_VIG),
+    # AXIS（NASA Probe 候选，未入选）
+    ('axis', 'axis_ccd_20221101.rmf', 'tar-rmf', AXIS),
+    ('axis', 'axis_onaxis_20230701.arf', 'tar-file', AXIS),
+    ('axis', 'axis_fovavg_20230701.arf', 'tar-file', AXIS),
+    # eROSITA：DR1 的 7 镜合成响应 + SIXTE 的逐镜渐晕和面积
+    ('erosita', 'onaxis_tm0_rmf_2023-01-17.fits', 'gz-rmf', ERO + 'onaxis_tm0_rmf_2023-01-17.fits.gz'),
+    ('erosita', 'onaxis_tm0_arf_filter_2023-01-17.fits.gz', 'file', ERO + 'onaxis_tm0_arf_filter_2023-01-17.fits.gz'),
+] + [('erosita', f % tm, 'tar-file', SIXTE) for tm in range(1, 8)
+     for f in ('erosita_vignetting_tm%d_v4.0.fits', 'tm%d_arf_filter_000101v02.fits')] + [
+    # XMM-Newton：EPIC 用 AO-26 提案响应（Thin 滤光片，轴上），RGS 用 SAS v21 的 RSP，渐晕来自 CCF
+] + [('xmm', '%s-thin-5.%s' % (c, x), 'tar-rmf' if x == 'rmf' else 'tar-file', AO26)
+     for c in ('mos1', 'mos2', 'pn') for x in ('arf', 'rmf')
+] + [('xmm', o + '.rmf', 'rsp', XMM + 'RGS/SASv21.0.RGSrmfs/%s.rmf' % o) for o in ('R1o1', 'R1o2', 'R2o1', 'R2o2')
+] + [
+    ('xmm', f, 'file', CCF + f) for f in ('XRT1_XAREAEF_0011.CCF', 'XRT2_XAREAEF_0012.CCF', 'XRT3_XAREAEF_0014.CCF')] + [
+    # XRISM / Resolve：Cycle 3 提案用响应，闸门阀（gate valve）关闭
+    ('xrism', 'rsl_Hp_L_2025.rmf', 'rmf', XRISM + 'rsl_Hp_L_2025.rmf'),
+    ('xrism', 'rsl_pntsrc_GVC_2025.arf', 'file', XRISM + 'rsl_pntsrc_GVC_2025.arf'),
+    ('xrism', 'rsl_extflat5_GVC_2025.arf', 'file', XRISM + 'rsl_extflat5_GVC_2025.arf'),
+    # Chandra：Cycle 28 提案用响应 + HRMA 渐晕
+    ('chandra', 'acisi_aimpt_cy28.rmf', 'rmf', CXC + 'imaging/CY28/acisi_aimpt_cy28.rmf'),
+    ('chandra', 'acisi_aimpt_cy28.arf', 'file', CXC + 'imaging/CY28/acisi_aimpt_cy28.arf'),
+    ('chandra', 'hrmaD1996-12-20vignetN0003.fits', 'file', HEA + 'FTP/caldb/data/chandra/default/vignet/hrmaD1996-12-20vignetN0003.fits'),
+] + [('chandra', 'aciss_%s%s_cy28.%s' % (g, o, x), 'rmf' if x == 'grmf' else 'file',
+      CXC + 'grating/CY28/aciss_%s%s_cy28.%s' % (g, o, x))
+     for g in ('heg', 'meg') for o in ('1', '-1', '2', '-2', '3', '-3') for x in ('grmf', 'garf')]
+
+print(len(CATALOG), '个文件')
+```
+
+    65 个文件
+
+## 下载
+
+下面这一格做全部的事，并记下每个文件**原本多大、实际读了多少字节、最后存了多大**。
+
+``` python
+def out_path(inst, name):
+    os.makedirs(os.path.join(DATA, inst), exist_ok=True)
+    return os.path.join(DATA, inst, name)
+
+
+log, cache = [], {}          # cache：同一个压缩包只下载/解包一次
+
+
+def member(how, url, names):
+    key = (how.split('-')[0], url)
+    if key not in cache:
+        if how.startswith('zip'):
+            cache[key] = zip_members(url, names)[0]
+        else:
+            cache[key] = tar_members(url, names)
+    return cache[key]
+
+
+t0 = time.time()
+for inst, name, how, url in CATALOG:
+    out = out_path(inst, name)
+    if os.path.exists(out) and not FORCE:
+        log.append((inst, name, how, np.nan, np.nan, os.path.getsize(out)))
+        continue
+    t = time.time()
+    if how == 'file':
+        b = get(url)
+        open(out, 'wb').write(b)
+        orig = read = len(b)
+    elif how in ('rmf', 'rsp'):
+        src = Source(url)
+        arf = out.replace('.rmf', '_area.arf') if how == 'rsp' else None
+        slim_rmf(src, out, origin=url, arf_out=arf)
+        orig, read = src.size, src.nbytes
+    elif how == 'gz-rmf':
+        z = get(url)
+        src = Source(gzip.decompress(z))
+        slim_rmf(src, out, origin=url)
+        orig, read = src.size, len(z)
+    else:                                                   # zip-/tar- 成员
+        names = [n for i, n, h, u in CATALOG if u == url]
+        b = member(how, url, names)[name]
+        if how.endswith('rmf'):
+            slim_rmf(Source(b), out, origin=name)
+        else:
+            open(out, 'wb').write(b)
+        orig, read = len(b), np.nan
+    log.append((inst, name, how, orig, read, os.path.getsize(out)))
+    print('%-8s %-42s %-8s %6.1fs' % (inst, name, how, time.time() - t))
+cache.clear()
+print('总用时 %.0f s' % (time.time() - t0))
+```
+
+    总用时 0 s
+
+## 自己提供的数据
+
+有几台仪器的响应文件**没有公开的下载地址**：
+
+| 仪器 | 为什么没有公开 | 需要的文件（放进 `user_data/<子目录>/`） |
+|----|----|----|
+| HUBS | 项目内部的响应文件 | `hubs/hubs_cc_v20181130.rmf`（普通像元 RMF）、`hubs/hubs_cc_v20201227.arf`（含渐晕的视场平均面积）、`hubs/hubs_cc_s_v20201227.arf`（轴上面积） |
+| DIXE | 项目内部的响应文件 | `dixe/DIXE_rsp_v1.0.1.arf` |
+| Arcus | 2021 年方案的响应文件只在团队内部流传 | `arcus/far_chan_all_-N.rmf` 和 `arcus/far_chan_all_ccdord_-N_true_-N.arf`（N = 2…11），`arcus/chan_all_+0.rmf`、`arcus/chan_all_+0.arf` |
+
+文件放好以后运行下面一格：ARF 原样复制，RMF 同样只保留约 400 行。
+**缺哪个都没关系**：教程 2 会跳过缺数据的仪器，照样画图。
+
+``` python
+USER_FILES = (
+    [('hubs', f) for f in ('hubs_cc_v20181130.rmf', 'hubs_cc_v20201227.arf', 'hubs_cc_s_v20201227.arf')]
+    + [('dixe', 'DIXE_rsp_v1.0.1.arf')]
+    + [('arcus', 'far_chan_all_-%d.rmf' % n) for n in range(2, 12)]
+    + [('arcus', 'far_chan_all_ccdord_-%d_true_-%d.arf' % (n, n)) for n in range(2, 12)]
+    + [('arcus', 'chan_all_+0.rmf'), ('arcus', 'chan_all_+0.arf')]
+    )
+
+missing = []
+for inst, name in USER_FILES:
+    src_path, out = os.path.join(USER, inst, name), out_path(inst, name)
+    if os.path.exists(out) and not FORCE:
+        log.append((inst, name, 'user', np.nan, np.nan, os.path.getsize(out)))
+    elif not os.path.exists(src_path):
+        missing.append(src_path)
+    elif name.endswith('.rmf'):
+        src = Source(src_path)
+        slim_rmf(src, out, origin=src_path)
+        log.append((inst, name, 'user-rmf', src.size, src.nbytes, os.path.getsize(out)))
+    else:
+        shutil.copyfile(src_path, out)
+        log.append((inst, name, 'user', os.path.getsize(src_path), np.nan, os.path.getsize(out)))
+print('缺少 %d 个自备文件' % len(missing) + ('：\n  ' + '\n  '.join(missing) if missing else ''))
+```
+
+    缺少 26 个自备文件：
+      user_data/hubs/hubs_cc_v20181130.rmf
+      user_data/hubs/hubs_cc_v20201227.arf
+      user_data/hubs/hubs_cc_s_v20201227.arf
+      user_data/dixe/DIXE_rsp_v1.0.1.arf
+      user_data/arcus/far_chan_all_-2.rmf
+      user_data/arcus/far_chan_all_-3.rmf
+      user_data/arcus/far_chan_all_-4.rmf
+      user_data/arcus/far_chan_all_-5.rmf
+      user_data/arcus/far_chan_all_-6.rmf
+      user_data/arcus/far_chan_all_-7.rmf
+      user_data/arcus/far_chan_all_-8.rmf
+      user_data/arcus/far_chan_all_-9.rmf
+      user_data/arcus/far_chan_all_-10.rmf
+      user_data/arcus/far_chan_all_-11.rmf
+      user_data/arcus/far_chan_all_ccdord_-2_true_-2.arf
+      user_data/arcus/far_chan_all_ccdord_-3_true_-3.arf
+      user_data/arcus/far_chan_all_ccdord_-4_true_-4.arf
+      user_data/arcus/far_chan_all_ccdord_-5_true_-5.arf
+      user_data/arcus/far_chan_all_ccdord_-6_true_-6.arf
+      user_data/arcus/far_chan_all_ccdord_-7_true_-7.arf
+      user_data/arcus/far_chan_all_ccdord_-8_true_-8.arf
+      user_data/arcus/far_chan_all_ccdord_-9_true_-9.arf
+      user_data/arcus/far_chan_all_ccdord_-10_true_-10.arf
+      user_data/arcus/far_chan_all_ccdord_-11_true_-11.arf
+      user_data/arcus/chan_all_+0.rmf
+      user_data/arcus/chan_all_+0.arf
+
+## 汇总
+
+``` python
+MB = 1e6
+rows = [(i, n, h, o / MB, r / MB, s / MB) for i, n, h, o, r, s in log]
+print('%-8s %-42s %-9s %9s %9s %8s' % ('仪器', '文件', '方式', '原始MB', '读取MB', '存储MB'))
+for r in rows:
+    print('%-8s %-42s %-9s %9.2f %9.2f %8.2f' % r)
+orig = np.nansum([r[3] for r in rows])
+kept = sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(DATA) for f in fs) / MB
+print('\n原始文件合计约 %.0f MB（不算 2.9 GB 的 X-IFU 发布包和 144 MB 的 SIXTE 包）；data/ 目录现在 %.1f MB。' % (orig, kept))
+
+manifest = {os.path.relpath(os.path.join(d, f), DATA):
+            hashlib.sha256(open(os.path.join(d, f), 'rb').read()).hexdigest()
+            for d, _, fs in os.walk(DATA) for f in sorted(fs) if f != 'manifest.json'}
+json.dump(manifest, open(os.path.join(DATA, 'manifest.json'), 'w'), indent=1, ensure_ascii=False)
+```
+
+    仪器       文件                                         方式             原始MB      读取MB     存储MB
+    xifu     new_athena_xifu_mar_v2_4eV_gaussian.rmf    zip-rmf         nan       nan     0.46
+    xifu     new_athena_xifu_mar_v2_no_filter.arf       zip-file        nan       nan     0.48
+    xifu     NewAthena_Vignetting_1may26_amcn.txt       file            nan       nan     0.00
+    axis     axis_ccd_20221101.rmf                      tar-rmf         nan       nan     0.10
+    axis     axis_onaxis_20230701.arf                   tar-file        nan       nan     0.17
+    axis     axis_fovavg_20230701.arf                   tar-file        nan       nan     0.17
+    erosita  onaxis_tm0_rmf_2023-01-17.fits             gz-rmf          nan       nan     0.12
+    erosita  onaxis_tm0_arf_filter_2023-01-17.fits.gz   file            nan       nan     0.01
+    erosita  erosita_vignetting_tm1_v4.0.fits           tar-file        nan       nan     0.05
+    erosita  tm1_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
+    erosita  erosita_vignetting_tm2_v4.0.fits           tar-file        nan       nan     0.05
+    erosita  tm2_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
+    erosita  erosita_vignetting_tm3_v4.0.fits           tar-file        nan       nan     0.05
+    erosita  tm3_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
+    erosita  erosita_vignetting_tm4_v4.0.fits           tar-file        nan       nan     0.05
+    erosita  tm4_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
+    erosita  erosita_vignetting_tm5_v4.0.fits           tar-file        nan       nan     0.05
+    erosita  tm5_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
+    erosita  erosita_vignetting_tm6_v4.0.fits           tar-file        nan       nan     0.05
+    erosita  tm6_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
+    erosita  erosita_vignetting_tm7_v4.0.fits           tar-file        nan       nan     0.05
+    erosita  tm7_arf_filter_000101v02.fits              tar-file        nan       nan     0.03
+    xmm      mos1-thin-5.arf                            tar-file        nan       nan     0.03
+    xmm      mos1-thin-5.rmf                            tar-rmf         nan       nan     0.34
+    xmm      mos2-thin-5.arf                            tar-file        nan       nan     0.03
+    xmm      mos2-thin-5.rmf                            tar-rmf         nan       nan     0.35
+    xmm      pn-thin-5.arf                              tar-file        nan       nan     0.03
+    xmm      pn-thin-5.rmf                              tar-rmf         nan       nan     0.36
+    xmm      R1o1.rmf                                   rsp             nan       nan     0.26
+    xmm      R1o2.rmf                                   rsp             nan       nan     0.25
+    xmm      R2o1.rmf                                   rsp             nan       nan     0.27
+    xmm      R2o2.rmf                                   rsp             nan       nan     0.27
+    xmm      XRT1_XAREAEF_0011.CCF                      file            nan       nan     0.10
+    xmm      XRT2_XAREAEF_0012.CCF                      file            nan       nan     0.10
+    xmm      XRT3_XAREAEF_0014.CCF                      file            nan       nan     0.12
+    xrism    rsl_Hp_L_2025.rmf                          rmf             nan       nan     0.83
+    xrism    rsl_pntsrc_GVC_2025.arf                    file            nan       nan     0.73
+    xrism    rsl_extflat5_GVC_2025.arf                  file            nan       nan     0.73
+    chandra  acisi_aimpt_cy28.rmf                       rmf             nan       nan     0.20
+    chandra  acisi_aimpt_cy28.arf                       file            nan       nan     0.04
+    chandra  hrmaD1996-12-20vignetN0003.fits            file            nan       nan     0.55
+    chandra  aciss_heg1_cy28.grmf                       rmf             nan       nan     0.16
+    chandra  aciss_heg1_cy28.garf                       file            nan       nan     0.26
+    chandra  aciss_heg-1_cy28.grmf                      rmf             nan       nan     0.16
+    chandra  aciss_heg-1_cy28.garf                      file            nan       nan     0.26
+    chandra  aciss_heg2_cy28.grmf                       rmf             nan       nan     0.15
+    chandra  aciss_heg2_cy28.garf                       file            nan       nan     0.26
+    chandra  aciss_heg-2_cy28.grmf                      rmf             nan       nan     0.15
+    chandra  aciss_heg-2_cy28.garf                      file            nan       nan     0.26
+    chandra  aciss_heg3_cy28.grmf                       rmf             nan       nan     0.15
+    chandra  aciss_heg3_cy28.garf                       file            nan       nan     0.26
+    chandra  aciss_heg-3_cy28.grmf                      rmf             nan       nan     0.15
+    chandra  aciss_heg-3_cy28.garf                      file            nan       nan     0.26
+    chandra  aciss_meg1_cy28.grmf                       rmf             nan       nan     0.17
+    chandra  aciss_meg1_cy28.garf                       file            nan       nan     0.26
+    chandra  aciss_meg-1_cy28.grmf                      rmf             nan       nan     0.17
+    chandra  aciss_meg-1_cy28.garf                      file            nan       nan     0.26
+    chandra  aciss_meg2_cy28.grmf                       rmf             nan       nan     0.17
+    chandra  aciss_meg2_cy28.garf                       file            nan       nan     0.26
+    chandra  aciss_meg-2_cy28.grmf                      rmf             nan       nan     0.17
+    chandra  aciss_meg-2_cy28.garf                      file            nan       nan     0.26
+    chandra  aciss_meg3_cy28.grmf                       rmf             nan       nan     0.17
+    chandra  aciss_meg3_cy28.garf                       file            nan       nan     0.26
+    chandra  aciss_meg-3_cy28.grmf                      rmf             nan       nan     0.17
+    chandra  aciss_meg-3_cy28.garf                      file            nan       nan     0.26
+
+    原始文件合计约 0 MB（不算 2.9 GB 的 X-IFU 发布包和 144 MB 的 SIXTE 包）；data/ 目录现在 12.7 MB。
+
+`data/manifest.json` 记下了每个文件的 SHA-256
+校验和，方便以后核对数据有没有变。 下一步：打开 **教程
+2（`02_fom.qmd`）**。

@@ -2,6 +2,9 @@ data/
 user_data/
 .quarto/
 *_files/
+# gfm 渲染的图目录必须提交（.md 里的相对路径图片），从上一行的 *_files/ 里豁免出来
+!01_data_files/
+!02_fom_files/
 *.quarto_ipynb
 __pycache__/
 .ipynb_checkpoints/

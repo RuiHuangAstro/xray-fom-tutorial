@@ -1,0 +1,91 @@
+name: Render Tutorial (gfm + ipynb)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '01_data.qmd'
+      - '02_fom.qmd'
+      - '.github/workflows/render-tutorial.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    name: Render to gfm + ipynb (clean env, no user_data)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Quarto + Python deps
+        run: |
+          curl -sSL https://quarto.org/download/latest/quarto-linux-amd64.deb -o "$RUNNER_TEMP/quarto.deb"
+          sudo apt-get update && sudo apt-get install -y "$RUNNER_TEMP/quarto.deb"
+          python3 -m pip install --quiet numpy astropy matplotlib jupyter
+
+      - name: Render 01_data.qmd (gfm + ipynb, executes and downloads public data)
+        env:
+          QUARTO_PYTHON: /usr/bin/python3
+        run: |
+          quarto render 01_data.qmd --to gfm
+          quarto render 01_data.qmd --to ipynb
+
+      - name: Render 02_fom.qmd (gfm + ipynb, reuses data/, skips HUBS/DIXE/Arcus)
+        env:
+          QUARTO_PYTHON: /usr/bin/python3
+        run: |
+          quarto render 02_fom.qmd --to gfm
+          quarto render 02_fom.qmd --to ipynb
+
+      - name: Fix cross-refs in gfm output
+        run: |
+          python3 <<'PYEOF'
+          import re
+          # Quarto xrefs <a href="#sec-x" class="quarto-xref">小节 N</a> point to anchors
+          # GitHub never generates (gfm output has no heading ids; GitHub slugs CJK
+          # headings its own way). Replace each with the target section's title text.
+          # "第 <a>小节 N</a> 节" -> "「标题」一节"; bare <a> -> "「标题」"
+          mapping = {
+              'sec-trick':   '响应文件是什么样的',
+              'sec-catalog': '数据清单',
+              'sec-user':    '自己提供的数据',
+              'sec-fom':     '推导两种 FoM',
+              'sec-combine': '多个探测器怎么合并',
+              'sec-vig':     '渐晕和有效视场',
+              'sec-inst':    '逐台仪器计算',
+              'sec-hetg':    'HETG 多个级次怎么加',
+          }
+          p_full = re.compile(r'第\s*<a href="#(sec-[a-z]+)" class="quarto-xref">(?:小节|Section)\s+\d+(?:\.\d+)*</a>\s*节')
+          p_inner = re.compile(r'<a href="#(sec-[a-z]+)" class="quarto-xref">(?:小节|Section)\s+\d+(?:\.\d+)*</a>')
+          MARK = '<a href="#sec-'
+          for fname in ('01_data.md', '02_fom.md'):
+              with open(fname, encoding='utf-8') as f:
+                  content = f.read()
+              n = len(p_inner.findall(content))
+              new = p_full.sub(lambda m: '「%s」一节' % mapping.get(m.group(1), m.group(1)), content)
+              new = p_inner.sub(lambda m: '「%s」' % mapping.get(m.group(1), m.group(1)), new)
+              if new != content:
+                  with open(fname, 'w', encoding='utf-8') as f:
+                      f.write(new)
+              leftover = MARK in new
+              print('%s: fixed %d cross-refs, leftover=%s' % (fname, n, leftover))
+              assert not leftover, 'unresolved xref remains in ' + fname
+          PYEOF
+
+      - name: Commit rendered outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add 01_data.md 02_fom.md 01_data_files/ 02_fom_files/ 01_data.ipynb 02_fom.ipynb
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: render gfm + ipynb (clean env, public data only) [skip ci]"
+            git push
+          else
+            echo "Nothing to commit"
+          fi
