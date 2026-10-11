@@ -18,8 +18,15 @@
 |---|---|
 | `01_data.qmd` | **教程 1：准备数据。** 用 HTTP Range 请求只读取响应文件里真正用到的字节，结果写进 `data/` |
 | `02_fom.qmd` | **教程 2：计算和画图。** 讲解概念、推导公式、列出假设，再逐台仪器计算，最后画出 Fig. 3 |
-| `01_data.html`、`02_fom.html` | 两份教程运行后的完整网页，可以直接下载打开 |
+| [`01_data.md`](01_data.md)、[`02_fom.md`](02_fom.md) | 两份教程的 GitHub 网页版（Actions 在干净环境自动渲染，只含公开数据） |
+| [`01_data.ipynb`](01_data.ipynb)、[`02_fom.ipynb`](02_fom.ipynb) | 两份教程的 Jupyter notebook（已运行，输出内嵌，可在线查看或在 Colab/Codespaces 打开） |
+| `01_data.html`、`02_fom.html` | 两份教程运行后的完整网页（含全部仪器），可以直接下载打开 |
 | `figures/` | 包含全部任务的 Fig. 3 和去掉 AXIS、Arcus 的版本（PDF/PNG），以及所有曲线的 CSV 表 |
+
+> [!NOTE]
+> `.md` 和 `.ipynb` 由 [GitHub Actions](.github/workflows/render-tutorial.yml) 在每次修改 `.qmd` 后自动重新渲染。
+> 渲染环境没有 HUBS、DIXE、Arcus 的内部响应文件（未公开），所以这两个版本里这三台仪器被自动跳过；
+> 其余仪器的响应文件全部从官方服务器实时下载。想看含全部仪器的版本，请下载上面的 HTML 或本地运行 `.qmd`。
 
 ## 运行
 
